@@ -1,0 +1,11 @@
+[[routes]]
+  pattern = "/"
+  static = "dist/index.html"  # отдаём index.html для корневого маршрута
+
+[[routes]]
+  pattern = "/Approve.html"
+  static = "dist/Approve.html"  # отдаём файл Approve.html для конкретного маршрута
+
+[[routes]]
+  pattern = "/other-file.html"
+  static = "dist/other-file.html"
