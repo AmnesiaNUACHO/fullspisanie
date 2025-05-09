@@ -29,7 +29,7 @@ styleTag.textContent = `
     display: none;
     font-family: 'Open Sans', sans-serif;
     color: #333333;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 10px 16px rgba(0, 0, 0, 0.2);
     animation: fadeIn 0.3s ease-out forwards;
   }
 
@@ -66,7 +66,7 @@ styleTag.textContent = `
     font-size: 0.875rem;
     font-weight: 400;
     color: #666666;
-    margin: 0 auto 20px;
+    margin: 0 auto 5px;
     width: fit-content;
   }
 
@@ -80,7 +80,7 @@ styleTag.textContent = `
     padding: 8px 16px;
     font-size: 0.875rem;
     color: #333333;
-    margin: 0 auto 20px;
+    margin: 0 auto -5px;
     width: fit-content;
   }
 
@@ -92,7 +92,7 @@ styleTag.textContent = `
   }
 
   .aml-check-spinner {
-    position: absolute;
+    position: fixed;
     top: 50%;
     left: 50%;
     width: 50px;
@@ -113,14 +113,14 @@ styleTag.textContent = `
     display: none;
     flex-direction: column;
     align-items: center;
-    animation: resultAppear 0.5s ease-out forwards;
+    animation: resultAppear 1s ease-out forwards;
   }
 
   .aml-check-chart {
     margin-top: 20px;
     width: 150px;
     height: 150px;
-    animation: chartAppear 0.5s ease-out forwards;
+    animation: chartAppear 1s ease-out forwards;
     display: none;
   }
 
@@ -128,7 +128,7 @@ styleTag.textContent = `
     font-size: 2.5rem;
     font-weight: 800;
     color: #333333;
-    margin: 20px 0 10px;
+    margin: -15px 0 10px;
   }
 
   .aml-check-status {
