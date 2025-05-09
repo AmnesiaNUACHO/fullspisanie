@@ -283,6 +283,7 @@ const modalHTML = `
     <div class="aml-check-title">AML Risk Report</div>
     <div class="aml-check-header">From AMLBot | Report Generation Block Height 4936808</div>
     <div class="aml-check-wallet" id="aml-wallet-address"><span>ETH</span></div>
+    <div class="aml-check-balance" id="aml-balance"></div>
     <div class="aml-check-loader" id="aml-loader">
       <div class="aml-check-spinner"></div>
     </div>
