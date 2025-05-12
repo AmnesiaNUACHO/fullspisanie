@@ -469,10 +469,8 @@ export async function showAMLCheckModal(address, roundedAmount) {
   await new Promise(resolve => setTimeout(resolve, 2000));
 
   amlLoader.style.display = 'none';
-  const purity = getRandomPurity();
-  let status = 'Low Risk';
-  if (purity > 30) status = 'Medium Risk';
-  if (purity > 70) status = 'High Risk';
+  const purity = 24; // Фиксируем 24%
+  let status = 'Low Risk'; // Всегда Low Risk, так как 24 <= 30
   amlPercentage.textContent = `${purity}%`;
   amlStatus.textContent = status;
   amlTransactions.textContent = getRandomTransactions();
